@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voice Assistant - Audio Capture Test</title>
+</head>
+<body>
+    <h1>Audio Capture Test</h1>
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+
+    <script>
+        let mediaRecorder;
+        let stream;
+
+        const startBtn = document.getElementById("startBtn");
+        const stopBtn = document.getElementById("stopBtn");
+
+        startBtn.addEventListener("click", async () => {
+            try {
+                // Ask the browser for mic access. This triggers the permission popup.
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                console.log("Mic access granted. Stream:", stream);
+
+                // Wrap the stream in a MediaRecorder so we can get chunked data out of it.
+                mediaRecorder = new MediaRecorder(stream);
+
+                // This fires every time a chunk of audio is ready, based on the
+                // timeslice we pass to .start() below.
+                mediaRecorder.ondataavailable = (event) => {
+                    console.log("Chunk received, size in bytes:", event.data.size);
+                };
+
+                // Start recording, producing a new chunk roughly every 250ms.
+                mediaRecorder.start(250);
+                console.log("Recording started.");
+
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+
+            } catch (err) {
+                console.error("Error accessing microphone:", err);
+            }
+        });
+
+        stopBtn.addEventListener("click", () => {
+            mediaRecorder.stop();
+            stream.getTracks().forEach(track => track.stop()); // releases the mic
+            console.log("Recording stopped.");
+
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+    </script>
+</body>
+</html>
