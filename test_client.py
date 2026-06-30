@@ -5,7 +5,7 @@ import websockets
 async def main():
     uri = "ws://127.0.0.1:8000/ws/echo"
     async with websockets.connect(uri) as websocket:
-        message = "hello server"
+        message = b"hello server"
         
         start = time.time()
         await websocket.send(message)
