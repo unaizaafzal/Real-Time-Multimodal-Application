@@ -1,0 +1,12 @@
+# Virtual environment
+.venv/
+
+# Environment variables / API keys - never commit these
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Audio test files - these are large binary files, no need in git
+received_audio.webm
