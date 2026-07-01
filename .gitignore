@@ -9,4 +9,4 @@ __pycache__/
 *.pyc
 
 # Audio test files - these are large binary files, no need in git
-received_audio.webm
+received_audio.webm.vscode/
