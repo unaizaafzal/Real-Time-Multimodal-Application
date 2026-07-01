@@ -1,82 +1,73 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Voice Assistant - Audio Capture Test</title>
+    <title>Voice Assistant - AudioWorklet Capture</title>
 </head>
 <body>
-    <h1>Audio Capture Test</h1>
+    <h1>Voice Assistant</h1>
     <button id="startBtn">Start Recording</button>
     <button id="stopBtn" disabled>Stop Recording</button>
+    <div id="transcript" style="margin-top: 20px; font-size: 18px;"></div>
 
     <script>
-        let mediaRecorder;
+        let audioContext;
+        let workletNode;
         let stream;
-        let socket; // NEW: holds our WebSocket connection
+        let socket;
 
         const startBtn = document.getElementById("startBtn");
         const stopBtn = document.getElementById("stopBtn");
+        const transcriptDiv = document.getElementById("transcript");
 
         startBtn.addEventListener("click", async () => {
             try {
-                // NEW: open the WebSocket connection first, before touching the mic.
+                // Open WebSocket first
                 socket = new WebSocket("ws://127.0.0.1:8000/ws/audio");
+                socket.binaryType = "arraybuffer";
 
-                socket.onopen = () => {
-                    console.log("WebSocket connection opened.");
-                };
+                socket.onopen = () => console.log("WebSocket opened.");
+                socket.onmessage = (event) => console.log("Server:", event.data);
+                socket.onerror = (err) => console.error("WebSocket error:", err);
+                socket.onclose = () => console.log("WebSocket closed.");
 
-                socket.onmessage = (event) => {
-                    // This fires whenever the server sends something back.
-                    // Right now the server echoes bytes, so this logs the echo.
-                    console.log("Message from server:", event.data);
-                };
-
-                socket.onerror = (err) => {
-                    console.error("WebSocket error:", err);
-                };
-
-                socket.onclose = () => {
-                    console.log("WebSocket connection closed.");
-                };
-
-                // Ask the browser for mic access. This triggers the permission popup.
+                // Get mic access
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                console.log("Mic access granted. Stream:", stream);
 
-                mediaRecorder = new MediaRecorder(stream);
+                // AudioContext at 16kHz to match Deepgram's expected sample rate
+                audioContext = new AudioContext({ sampleRate: 16000 });
 
-                mediaRecorder.ondataavailable = (event) => {
-                    console.log("Chunk received, size in bytes:", event.data.size);
+                // Load the worklet processor from the separate file
+                await audioContext.audioWorklet.addModule("audio_processor.js");
 
-                    // NEW: send the chunk over the WebSocket, but only if it's open.
-                    // socket.readyState === WebSocket.OPEN guards against trying to
-                    // send before the connection is ready, or after it's closed.
+                const source = audioContext.createMediaStreamSource(stream);
+                workletNode = new AudioWorkletNode(audioContext, "audio-processor");
+
+                // Each time the worklet sends a PCM chunk, forward it over WebSocket
+                workletNode.port.onmessage = (event) => {
                     if (socket.readyState === WebSocket.OPEN) {
-                        socket.send(event.data); // Blob sent directly, no conversion needed
-                        console.log("Chunk sent to server.");
-                    } else {
-                        console.warn("Socket not open, skipping send.");
+                        socket.send(event.data); // raw Int16Array buffer
+                        console.log("PCM chunk sent:", event.data.byteLength, "bytes");
                     }
                 };
 
-                mediaRecorder.start(250);
-                console.log("Recording started.");
+                source.connect(workletNode);
+                workletNode.connect(audioContext.destination);
 
+                console.log("Recording started (AudioWorklet, 16kHz PCM).");
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
 
             } catch (err) {
-                console.error("Error accessing microphone:", err);
+                console.error("Error:", err);
             }
         });
 
-        stopBtn.addEventListener("click", () => {
-            mediaRecorder.stop();
+        stopBtn.addEventListener("click", async () => {
+            workletNode.disconnect();
             stream.getTracks().forEach(track => track.stop());
+            await audioContext.close();
+            socket.close();
             console.log("Recording stopped.");
-
-            socket.close(); // NEW: cleanly close the WebSocket too
-
             startBtn.disabled = false;
             stopBtn.disabled = true;
         });
